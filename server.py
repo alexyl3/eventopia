@@ -1,6 +1,9 @@
 from flask import Flask, request, jsonify
 import logging
-import random
+import sqlite3
+from data import bd_session
+from data.events import Events
+from data.keywords import Keywords
 
 app = Flask(__name__)
 
@@ -19,10 +22,12 @@ def main():
             'end_session': False
         }
     }
+    bd_session.global_init("eventopia.db")
     handle_dialog(response, request.json)
     logging.info('Response: %r', response)
     return jsonify(response)
 
+keywords = []
 
 # функция для начала диалога с пользователем
 def handle_dialog(res, req):
@@ -82,7 +87,19 @@ def handle_dialog(res, req):
 
 # функция поиска результатов по запросу
 def find_results(res, req):
+    db_sess = bd_session.create_session()
+    keywords = db_sess.query(Keywords).all()
+    print(keywords)
     to_find = get_subject(req)
+    res['response']['card']['type'] = 'BigImage'
+    res['response']['card']['title'] = 'Спектакль Недоросль в Малом театре'
+    res['response']['card']['image_id'] = "https://www.maly.ru/images/performances/5f8c0e8432189.jpg"
+    res['response']['buttons'] = [
+            {
+                'hide': True,
+                'title': 'Перейти',
+                "url": "https://www.maly.ru/spectacle/view?name=nedorosl"
+            }]
     # поиск по базе данных результатов и составление ответа
     return
 
@@ -92,9 +109,12 @@ def get_subject(req):
     # перебираем именованные сущности
     for entity in req['request']['nlu']['entities']:
         # если тип YANDEX.GEO, то пытаемся получить город(city), если нет, то возвращаем None
-        if entity['type'] == 'YANDEX.GEO':
-            # возвращаем None, если не нашли сущности с типом YANDEX.GEO
-            return entity['value'].get('city', None)
+        if entity['type'] == 'YANDEX.FIO':
+            return entity['value'].get('last_name', None)
+    for word in req['request']['nlu']['tokens']:
+        if word.lower() in keywords:
+            return word.lower()
+
 
 
 # функция для поиска в ответе пользователя имени
@@ -106,3 +126,5 @@ def get_first_name(req):
 
 if __name__ == '__main__':
     app.run()
+
+# https://www.maly.ru/spectacle/view?name=nedorosl
