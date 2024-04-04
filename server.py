@@ -88,7 +88,7 @@ def handle_dialog(res, req):
 # функция поиска результатов по запросу
 def find_results(res, req):
     db_sess = bd_session.create_session()
-    keywords = db_sess.query(Keywords).all()
+    keywords = Keywords.query.all()
     print(keywords)
     to_find = get_subject(req)
     res['response']['card']['type'] = 'BigImage'
