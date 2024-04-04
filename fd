@@ -1,0 +1,19 @@
+import sqlite3
+import csv
+
+con = sqlite3.connect(input())
+board, n = input().split()
+n = int(n)
+cur = con.cursor()
+board_id = cur.execute(
+    f"""SELECT id FROM Sides WHERE Sides.title = '{board}'""").fetchall()
+result = cur.execute(
+    f"""SELECT broken_thing, damage, can_be_repaired, owner, size FROM Protocol LEFT JOIN Rooms ON Protocol.room_id =
+    Rooms.id WHERE Rooms.side_id = {int(board_id[0][0])} and Protocol.damage >= {n}""").fetchall()
+con.close()
+result.sort(key=lambda x: (-int(x[1])))
+with open('damage.csv', 'w', newline='', encoding="utf8") as csvfile:
+    writer = csv.writer(
+        csvfile, delimiter=';', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+    for i in result:
+        writer.writerow([i[0], i[1], i[2], i[3], i[4]])
