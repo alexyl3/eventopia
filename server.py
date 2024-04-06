@@ -28,7 +28,9 @@ def main():
     logging.info('Response: %r', response)
     return jsonify(response)
 
+
 keywords = []
+
 
 # функция для начала диалога с пользователем
 def handle_dialog(res, req):
@@ -38,7 +40,8 @@ def handle_dialog(res, req):
         sessionStorage[user_id] = {
             'first_name': None,
             'started': False,
-            'grade': None
+            'grade': None,
+            'used': []
         }
         return
 
@@ -86,49 +89,70 @@ def handle_dialog(res, req):
         else:
             find_results(res, req)
 
+
 # функция поиска результатов по запросу
 def find_results(res, req):
     to_find = get_subject(req)
-    if to_find is not None:
-        res['response']['text'] = f"Вам может понравится {to_find.image_link}"
+    print(to_find)
+    if to_find is not None and to_find != "stop":
+        event = to_find
+        sessionStorage[req['session']['user_id']]['used'].append(event)
+        res['response']['text'] = f"Вам может понравится {event.title}"
         res['response']['card'] = {}
         res['response']['card']['type'] = 'BigImage'
-        res['response']['card']['title'] = to_find.title
-        res['response']['card']['image_id'] = f"Вам может понравится {to_find.image_link}"
+        res['response']['card']['title'] = f"Вам может понравится {event.title}"
+        res['response']['card']['image_id'] = event.image_link
         res['response']['buttons'] = [
-                {
-                    'hide': True,
-                    'title': 'Перейти',
-                    "url": to_find.link
-                }]
+            {
+                'hide': True,
+                'title': 'Перейти',
+                "url": event.link
+            }]
         # поиск по базе данных результатов и составление ответа
         return
+    elif to_find == "stop":
+        res['response']['text'] = f'Было приятно помочь!'
+
     else:
-        res['response']['text'] = f'К сожалению, не удалось найти ничего по твоему запросу. Может тебя интересует еще что-то?'
+        res['response'][
+            'text'] = f'К сожалению, не удалось найти ничего по твоему запросу. Может тебя интересует еще что-то?'
 
 
 # функция для поиска в ответе пользователя писателя или книги
 def get_subject(req):
     db_sess = bd_session.create_session()
     keywords = [keyword.word for keyword in db_sess.query(Keywords).all()]
-    words = " ".join([word.lower() for word in req['request']['nlu']['entities']])
+    words = " ".join([word.lower() for word in req['request']['nlu']['tokens']])
     for keyword in keywords:
         if keyword.lower()[:-1] in words:
             key_id = db_sess.query(Keywords).filter(Keywords.word == keyword).first()
-            event = db_sess.query(Events).filter(Events.key_words == key_id).all()
+            event = db_sess.query(Events).filter(Events.key_words == key_id.id).first()
+            while event in sessionStorage[req['session']['user_id']]['used']:
+                event = choice(db_sess.query(Events).filter(Events.key_words == key_id.id).all())
             if event:
                 return event
-            event = db_sess.query(Events).filter(Events.author == key_id).all()
+            event = db_sess.query(Events).filter(Events.author == key_id.id).first()
+            while event in sessionStorage[req['session']['user_id']]['used']:
+                event = choice(db_sess.query(Events).filter(Events.author == key_id.id).all())
             if event:
                 return event
-
-    if " нет " in words or "не " in words or "идей" in words:
-        event = [choice(db_sess.query(Events).filter(Events.grade == sessionStorage[req['session']['user_id']]['grade']).all())]
+    print()
+    if "нет" in words or "не" in words or "еще" in words or "друго" in words:
+        event = db_sess.query(Events).filter(Events.grade == sessionStorage[req['session']['user_id']]['grade']).first()
+        while event in sessionStorage[req['session']['user_id']]['used']:
+            event = choice(
+                db_sess.query(Events).filter(Events.grade == sessionStorage[req['session']['user_id']]['grade']).all())
         if event:
             return event
-        return [choice(db_sess.query(Events).all())]
-    return None
+        event = db_sess.query(Events).first()
+        while event in sessionStorage[req['session']['user_id']]['used']:
+            event = choice(db_sess.query(Events).all())
+        if event:
+            return event
 
+    if "все" in words or "хватит" in words:
+        return "stop"
+    return None
 
 
 # функция для поиска в ответе пользователя имени
@@ -140,5 +164,3 @@ def get_first_name(req):
 
 if __name__ == '__main__':
     app.run()
-
-# https://www.maly.ru/spectacle/view?name=nedorosl
