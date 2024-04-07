@@ -41,7 +41,8 @@ def handle_dialog(res, req):
             'first_name': None,
             'started': False,
             'grade': None,
-            'used': []
+            'used': [],
+            'last': None
         }
         return
 
@@ -94,9 +95,14 @@ def handle_dialog(res, req):
 def find_results(res, req):
     to_find = get_subject(req)
     print(to_find)
-    if to_find is not None and to_find != "stop":
+    if to_find == "stop":
+        res['response']['text'] = f'Было приятно помочь!'
+    elif to_find == "nothing more":
+        res['response'][
+            'text'] = f'К сожалению, больше по твоему запросу нет предложений. Может тебя интересует что-то еще?'
+    elif to_find is not None:
         event = to_find
-        sessionStorage[req['session']['user_id']]['used'].append(event)
+        sessionStorage[req['session']['user_id']]['used'].append(event.title)
         res['response']['text'] = f"Вам может понравится {event.title}"
         res['response']['card'] = {}
         res['response']['card']['type'] = 'BigImage'
@@ -108,14 +114,10 @@ def find_results(res, req):
                 'title': 'Перейти',
                 "url": event.link
             }]
-        # поиск по базе данных результатов и составление ответа
-        return
-    elif to_find == "stop":
-        res['response']['text'] = f'Было приятно помочь!'
-
     else:
         res['response'][
-            'text'] = f'К сожалению, не удалось найти ничего по твоему запросу. Может тебя интересует еще что-то?'
+            'text'] = f'Не удалось найти ничего по твоему запросу. Может тебя интересует еще что-то?'
+    return
 
 
 # функция для поиска в ответе пользователя писателя или книги
@@ -123,35 +125,36 @@ def get_subject(req):
     db_sess = bd_session.create_session()
     keywords = [keyword.word for keyword in db_sess.query(Keywords).all()]
     words = " ".join([word.lower() for word in req['request']['nlu']['tokens']])
+    if "еще" in words or "друго" in words:
+        words = sessionStorage[req['session']['user_id']]["last"]
+    sessionStorage[req['session']['user_id']]["last"] = words
+    found = 0
     for keyword in keywords:
         if keyword.lower()[:-1] in words:
+            found = 1
             key_id = db_sess.query(Keywords).filter(Keywords.word == keyword).first()
-            event = db_sess.query(Events).filter(Events.key_words == key_id.id).first()
-            while event in sessionStorage[req['session']['user_id']]['used']:
-                event = choice(db_sess.query(Events).filter(Events.key_words == key_id.id).all())
-            if event:
-                return event
-            event = db_sess.query(Events).filter(Events.author == key_id.id).first()
-            while event in sessionStorage[req['session']['user_id']]['used']:
-                event = choice(db_sess.query(Events).filter(Events.author == key_id.id).all())
-            if event:
-                return event
-    print()
-    if "нет" in words or "не" in words or "еще" in words or "друго" in words:
-        event = db_sess.query(Events).filter(Events.grade == sessionStorage[req['session']['user_id']]['grade']).first()
-        while event in sessionStorage[req['session']['user_id']]['used']:
-            event = choice(
-                db_sess.query(Events).filter(Events.grade == sessionStorage[req['session']['user_id']]['grade']).all())
-        if event:
-            return event
-        event = db_sess.query(Events).first()
-        while event in sessionStorage[req['session']['user_id']]['used']:
-            event = choice(db_sess.query(Events).all())
-        if event:
-            return event
+            events = db_sess.query(Events).filter(Events.key_words == key_id.id, Events.title.notin_(
+                sessionStorage[req['session']['user_id']]['used'])).all()
+            if not events:
+                events = db_sess.query(Events).filter(Events.author == key_id.id, Events.title.notin_(
+                    sessionStorage[req['session']['user_id']]['used'])).all()
+            if events:
+                return choice(events)
+
+    if "нет" in words or "не" in words:
+        events = db_sess.query(Events).filter(Events.grade == sessionStorage[req['session']['user_id']]['grade'],
+                                              Events.title.notin_(
+                                                  sessionStorage[req['session']['user_id']]['used'])).all()
+        if not events:
+            events = db_sess.query(Events).filter(
+                Events.title.notin_(sessionStorage[req['session']['user_id']]['used'])).all()
+        if events:
+            return choice(events)
 
     if "все" in words or "хватит" in words:
         return "stop"
+    if found == 1:
+        return "nothing more"
     return None
 
 
