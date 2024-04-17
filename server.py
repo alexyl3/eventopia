@@ -36,7 +36,8 @@ keywords = []
 def handle_dialog(res, req):
     user_id = req['session']['user_id']
     if req['session']['new']:
-        res['response']['text'] = 'Привет! Назови своё имя!'
+        res['response'][
+            'text'] = 'Привет! Я помогу тебе найти интересные мероприятия в Москве, связанные со школьной литературой. \n\nТы можешь назвать произведение или автора, а я предложу подходящие мероприятия. Если тебе хочется посмотреть другие варианты на свой запрос скажи "Еще". Если не знаешь, что хочется посмотреть - так и скажи, я подберу мероприятие на свой вкус!\n\n Как тебя зовут?'
         sessionStorage[user_id] = {
             'first_name': None,
             'started': False,
@@ -45,10 +46,15 @@ def handle_dialog(res, req):
             'last': None
         }
         return
-
+    print(sessionStorage[user_id])
     if sessionStorage[user_id]['first_name'] is None:
+
         first_name = get_first_name(req)
-        if first_name is None:
+        print(first_name)
+        if first_name == "help":
+            res['response'][
+                'text'] = f'Я помогу тебе найти интересные мероприятия в Москве, связанные со школьной литературой. \n\nТы можешь назвать произведение или автора, а я предложу подходящие мероприятия. Если тебе хочется посмотреть другие варианты на свой запрос скажи "Еще". Если не знаешь, что хочется посмотреть - так и скажи, я подберу мероприятие на свой вкус! Как тебя зовут?'
+        elif first_name is None:
             res['response']['text'] = 'Не расслышала имя. Повтори, пожалуйста!'
         else:
             sessionStorage[user_id]['first_name'] = first_name
@@ -82,11 +88,49 @@ def handle_dialog(res, req):
             ]
 
     else:
-        grade = req['request']['nlu']['tokens'][0]
-        sessionStorage[user_id]['grade'] = grade
-        if not sessionStorage[user_id]['started']:
-            res['response']['text'] = f'Отлично! Чем интересуешься сегодня?'
-            sessionStorage[user_id]['started'] = True
+        if sessionStorage[user_id]['grade'] is None:
+            words = " ".join([word.lower() for word in req['request']['nlu']['tokens']])
+            grade = None
+            for i in req['request']['nlu']['tokens']:
+                if i.isnumeric():
+                    grade = i
+            if "что ты умеешь" in words or "помощь" in words:
+                res['response'][
+                    'text'] = f'Я помогу тебе найти интересные мероприятия в Москве, связанные со школьной литературой. \n\nТы можешь назвать произведение или автора, а я предложу подходящие мероприятия. Если тебе хочется посмотреть другие варианты на свой запрос скажи "Еще". Если не знаешь, что хочется посмотреть - так и скажи, я подберу мероприятие на свой вкус!\n\n В каком классе ты учишься?'
+            elif grade is None:
+                res['response']['text'] = f"Не смогла понять, в каком ты классе. Повтори, пожалуйста!"
+                res['response']['buttons'] = [
+                    {
+                        'hide': True,
+                        'title': '5',
+                        'payload': {"grade": 5}
+                    },
+                    {
+                        'hide': True,
+                        'title': '6',
+                        'payload': {"grade": 6}
+                    },
+                    {
+                        'hide': True,
+                        'title': '7',
+                        'payload': {"grade": 7}
+                    },
+                    {
+                        'hide': True,
+                        'title': '8',
+                        'payload': {"grade": 8}
+                    },
+                    {
+                        'hide': True,
+                        'title': '9',
+                        'payload': {"grade": 9}
+                    }
+                ]
+            else:
+                sessionStorage[user_id]['grade'] = grade
+                if not sessionStorage[user_id]['started']:
+                    res['response']['text'] = f'Отлично! Чем интересуешься сегодня?'
+                    sessionStorage[user_id]['started'] = True
         else:
             find_results(res, req)
 
@@ -97,6 +141,9 @@ def find_results(res, req):
     print(to_find)
     if to_find == "stop":
         res['response']['text'] = f'Было приятно помочь!'
+    elif to_find == "help":
+        res['response'][
+            'text'] = f'Я помогу тебе найти интересные мероприятия в Москве, связанные со школьной литературой. \n\nТы можешь назвать произведение или автора, а я предложу подходящие варианты. Если тебе хочется посмотреть другие варианты на свой запрос скажи "Еще". Если не знаешь, что хочется посмотреть - так и скажи, я подберу мероприятие на свой вкус!'
     elif to_find == "nothing more":
         res['response'][
             'text'] = f'К сожалению, больше по твоему запросу нет предложений. Может тебя интересует что-то еще?'
@@ -125,6 +172,8 @@ def get_subject(req):
     db_sess = bd_session.create_session()
     keywords = [keyword.word for keyword in db_sess.query(Keywords).all()]
     words = " ".join([word.lower() for word in req['request']['nlu']['tokens']])
+    if "что ты умеешь" in words or "помощь" in words:
+        return "help"
     if "еще" in words or "друго" in words:
         words = sessionStorage[req['session']['user_id']]["last"]
     sessionStorage[req['session']['user_id']]["last"] = words
@@ -160,6 +209,9 @@ def get_subject(req):
 
 # функция для поиска в ответе пользователя имени
 def get_first_name(req):
+    words = " ".join([word.lower() for word in req['request']['nlu']['tokens']])
+    if "что ты умеешь" in words or "помощь" in words:
+        return "help"
     for entity in req['request']['nlu']['entities']:
         if entity['type'] == 'YANDEX.FIO':
             return entity['value'].get('first_name', None)
